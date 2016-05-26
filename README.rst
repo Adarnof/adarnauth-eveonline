@@ -15,8 +15,4 @@ Quick start
         'eveonline',
     ]
 
-2. Include the eveonline URLconf in your project urls.py like this::
-
-    url(r'^eve/', include('eveonline.urls')),
-
-3. Run `python manage.py migrate` to create the eveonline models.
+2. Run `python manage.py migrate` to create the eveonline models.
