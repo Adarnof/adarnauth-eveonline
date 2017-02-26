@@ -14,6 +14,7 @@ setup(
         'django>=1.9.1',
         'evelink>=0.7.4',
         'django-celery',
+        'adarnauth-esi>=1.2.2',
     ],
     packages=find_packages(),
     include_package_data=True,
