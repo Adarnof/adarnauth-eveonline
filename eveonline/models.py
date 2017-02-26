@@ -6,6 +6,7 @@ import requests
 from eveonline.endpoints import ALLIANCES
 from eveonline.managers import CharacterManager, CorporationManager, AllianceManager
 
+
 @python_2_unicode_compatible
 class BaseEntity(models.Model):
     """
@@ -19,6 +20,7 @@ class BaseEntity(models.Model):
 
     def __str__(self):
         return self.name
+
 
 @python_2_unicode_compatible
 class Character(BaseEntity):
@@ -92,6 +94,7 @@ class Character(BaseEntity):
         if update_fields:
             self.save(update_fields=update_fields)
 
+
 @python_2_unicode_compatible
 class Corporation(BaseEntity):
     """
@@ -112,7 +115,8 @@ class Corporation(BaseEntity):
             a = evelink.api.API()
             api = evelink.corp.Corp(a)
             result = api.corporation_sheet(corp_id=self.id).result
-        if (not 'name' in result) or (not 'alliance' in result) or (not 'members' in result) or (not 'ticker' in result):
+        if (not 'name' in result) or (not 'alliance' in result) or (not 'members' in result) or (
+        not 'ticker' in result):
             raise ValueError("Passed corp result missing required fields for corp update.")
         if self.id != result['id']:
             raise ValueError("Received api result for different corp id.")
@@ -135,6 +139,7 @@ class Corporation(BaseEntity):
         if update_fields:
             self.save(update_fields=update_fields)
 
+
 @python_2_unicode_compatible
 class Alliance(BaseEntity):
     """
@@ -152,7 +157,7 @@ class Alliance(BaseEntity):
             r = requests.get(ALLIANCES % self.id)
             r.raise_for_status()
             alliance_info = r.json()
-        update_fields=[]
+        update_fields = []
         if self.name != alliance_info['name']:
             self.name = alliance_info['name']
             update_fields.append('name')
@@ -161,6 +166,7 @@ class Alliance(BaseEntity):
             update_fields.append('ticker')
         if update_fields:
             self.save(update_fields=update_fields)
+
 
 @python_2_unicode_compatible
 class ApiKey(models.Model):
@@ -171,7 +177,7 @@ class ApiKey(models.Model):
         ('account', 'account'),
         ('character', 'character'),
         ('corp', 'corp'),
-        )
+    )
 
     id = models.PositiveIntegerField(unique=True, help_text="API ID")
     vcode = models.CharField(max_length=254, help_text="API Verification Code")
@@ -236,7 +242,7 @@ class ApiKey(models.Model):
                     self.corp = None
                     update_fields.append('corp')
             if not self.is_valid:
-                self.is_valid=True
+                self.is_valid = True
                 update_fields.append('is_valid')
             if update_fields:
                 self.save(update_fields=update_fields)
@@ -245,8 +251,8 @@ class ApiKey(models.Model):
                 raise e
             else:
                 update_fields = []
-                if self.is_valid or self.is_valid==None:
-                    self.is_valid=False
+                if self.is_valid or self.is_valid == None:
+                    self.is_valid = False
                     update_fields.append('is_valid')
                 if self.characters.all().exists():
                     for char in self.characters.all():

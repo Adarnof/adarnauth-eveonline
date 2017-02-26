@@ -13,6 +13,7 @@ setup(
         'requests>=2.9.1',
         'django>=1.9.1',
         'evelink>=0.7.4',
+        'django-celery',
     ],
     packages=find_packages(),
     include_package_data=True,
