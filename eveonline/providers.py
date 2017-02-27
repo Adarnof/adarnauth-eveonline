@@ -206,7 +206,7 @@ class EveProvider(object):
         """
         raise NotImplementedError()
 
-    def get_corp(self, corp_id):
+    def get_corporation(self, corp_id):
         """
         :return: a Corporation object for the given ID
         """
@@ -250,7 +250,7 @@ class EveSwaggerProvider(EveProvider):
         except HTTPNotFound:
             raise ObjectNotFound(alliance_id, 'alliance')
 
-    def get_corp(self, corp_id):
+    def get_corporation(self, corp_id):
         try:
             data = self.client.Corporation.get_corporations_corporation_id(corporation_id=corp_id).result()
             model = Corporation(
@@ -269,7 +269,7 @@ class EveSwaggerProvider(EveProvider):
     def get_character(self, character_id):
         try:
             data = self.client.Character.get_characters_character_id(character_id=character_id).result()
-            alliance_id = self.adapter.get_corp(data['corporation_id']).alliance_id
+            alliance_id = self.adapter.get_corporation(data['corporation_id']).alliance_id
             model = Character(
                 self.adapter,
                 character_id,
@@ -318,7 +318,7 @@ class EveXmlProvider(EveProvider):
         )
         return model
 
-    def get_corp(self, obj_id):
+    def get_corporation(self, obj_id):
         api = evelink.corp.Corp(api=self.api)
         try:
             corpinfo = api.corporation_sheet(corp_id=int(obj_id)).result
@@ -366,28 +366,19 @@ class EveXmlProvider(EveProvider):
             raise ObjectNotFound(obj_id, 'itemtype')
 
 
-class EveAdapter(EveProvider):
+class CachingProviderWrapper(EveProvider):
     """
-    Redirects queries to appropriate data source.
+    Caches data from wrapper provider
     """
 
-    def __init__(self, char_provider, corp_provider, alliance_provider, itemtype_provider):
-        self.char_provider = char_provider
-        self.corp_provider = corp_provider
-        self.alliance_provider = alliance_provider
-        self.itemtype_provider = itemtype_provider
-        self.char_provider.adapter = self
-        self.corp_provider.adapter = self
-        self.alliance_provider.adapter = self
-        self.itemtype_provider.adapter = self
+    def __init__(self, provider):
+        self.provider = provider
+        self.provider.adapter = self
 
     def __repr__(self):
-        skeleton = "<{} (character:{} corp:{} alliance:{} itemtype:{})>"
+        skeleton = "<{} ({})>"
         return skeleton.format(self.__class__.__name__,
-                               str(self.char_provider),
-                               str(self.corp_provider),
-                               str(self.alliance_provider),
-                               str(self.itemtype_provider))
+                               str(self.provider))
 
     @staticmethod
     def _get_from_cache(obj_class, obj_id):
@@ -417,7 +408,7 @@ class EveAdapter(EveProvider):
             self._cache(obj)
         return obj
 
-    def get_corp(self, obj_id, new=False):
+    def get_corporation(self, obj_id, new=False):
         if new:
             obj = None
         else:
@@ -425,7 +416,7 @@ class EveAdapter(EveProvider):
         if obj:
             obj.provider = self
         else:
-            obj = self._get_corp(obj_id)
+            obj = self._get_corporation(obj_id)
             self._cache(obj)
         return obj
 
@@ -454,40 +445,25 @@ class EveAdapter(EveProvider):
         return obj
 
     def _get_character(self, obj_id):
-        return self.char_provider.get_character(obj_id)
+        return self.provider.get_character(obj_id)
 
-    def _get_corp(self, obj_id):
-        return self.corp_provider.get_corp(obj_id)
+    def _get_corporation(self, obj_id):
+        return self.provider.get_corporation(obj_id)
 
     def _get_alliance(self, obj_id):
-        return self.alliance_provider.get_alliance(obj_id)
+        return self.provider.get_alliance(obj_id)
 
     def _get_itemtype(self, obj_id):
-        return self.itemtype_provider.get_itemtype(obj_id)
+        return self.provider.get_itemtype(obj_id)
 
 
-def eve_adapter_factory(api_key=None, token=None, **kwargs):
-    character_source = kwargs.get('character_source',
-                                  getattr(settings, 'EVEONLINE_CHARACTER_PROVIDER', '') or 'esi').lower()
-    corp_source = kwargs.get('corp_source', getattr(settings, 'EVEONLINE_CORP_PROVIDER', '') or 'esi').lower()
-    alliance_source = kwargs.get('alliance_source',
-                                 getattr(settings, 'EVEONLINE_ALLIANCE_PROVIDER', '') or 'esi').lower()
-    itemtype_source = kwargs.get('itemtype_source',
-                                 getattr(settings, 'EVEONLINE_ITEMTYPE_PROVIDER', '') or 'esi').lower()
+def eve_provider_factory(api_key=None, token=None, default_provider=None):
+    default_provider = default_provider or getattr(settings, 'EVEONLINE_DEFAULT_PROVIDER', '') or 'esi'
 
-    sources = [character_source, corp_source, alliance_source, itemtype_source]
-    providers = []
-
-    if 'xml' in sources:
-        xml = EveXmlProvider(api_key=api_key)
-    if 'esi' in sources:
-        esi = EveSwaggerProvider(token=token)
-
-    for source in sources:
-        if source == 'xml':
-            providers.append(xml)
-        elif source == 'esi':
-            providers.append(esi)
-        else:
-            raise ValueError('Unrecognized data source "%s"' % source)
-    return EveAdapter(providers[0], providers[1], providers[2], providers[3])
+    if default_provider.lower() == 'xml':
+        provider = EveXmlProvider(api_key=api_key)
+    elif default_provider.lower() == 'esi':
+        provider = EveSwaggerProvider(token=token)
+    else:
+        raise ValueError('Unrecognized provider "%s"' % default_provider)
+    return CachingProviderWrapper(provider)

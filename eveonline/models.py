@@ -1,10 +1,129 @@
 from __future__ import unicode_literals
 from django.db import models
 from django.utils.encoding import python_2_unicode_compatible
+from django.core import validators
 import evelink
-import requests
-from eveonline.endpoints import ALLIANCES
 from eveonline.managers import CharacterManager, CorporationManager, AllianceManager
+from eveonline.providers import eve_provider_factory, ObjectNotFound, Character as ProviderCharacter, \
+    Corporation as ProviderCorporation, Alliance as ProviderAlliance, ItemType as ProviderItemType
+
+
+class EveEntityValidator(validators.BaseValidator):
+    """
+    Ensures provided ID is valid for expected EVE entity type
+    """
+    def compare(self, obj_id, expected_type):
+        try:
+            return bool(getattr(eve_provider_factory(), 'get_%s' % expected_type.__class__.__name__.lower())(obj_id))
+        except ObjectNotFound:
+            return False
+
+    def clean(self, obj):
+        return obj.id
+
+
+class EveEntityField(models.BigIntegerField):
+    """
+    Abstract superclass for EVE Item storage
+    Subclasses must override the object class
+    """
+
+    object_class = None
+
+    @classmethod
+    def _get_object(cls, object_id):
+        return getattr(eve_provider_factory(), 'get_%s' % cls.object_class.__class__.__name__.lower())(object_id)
+
+    @property
+    def validators(self):
+        return super(EveEntityField, self).validators.append(
+            [validators.MinValueValidator(1), EveEntityValidator(self.object_class)])
+
+    def from_db_value(self, value, *args):
+        if value is None:
+            return value
+        return self._get_object(value)
+
+    def to_python(self, value):
+        if isinstance(value, self.object_class):
+            return value
+        elif value is None:
+            return None
+        else:
+            return self._get_object(value)
+
+
+class CharacterField(EveEntityField):
+    object_class = ProviderCharacter
+
+
+class CorporationField(EveEntityField):
+    object_class = ProviderCorporation
+
+
+class AllianceField(EveEntityField):
+    object_class = ProviderAlliance
+
+
+class ItemTypeField(EveEntityField):
+    object_class = ProviderItemType
+
+
+class CharacterSnapshotMixin:
+    """
+    Provides pseudo-FK behaviour to external API character data
+    Snapshots character_id and provides a character property
+    """
+    _character_id = models.PositiveIntegerField()
+
+    @property
+    def character(self):
+        try:
+            return eve_provider_factory().get_character(self._character_id)
+        except ObjectNotFound:
+            return None
+
+    @character.setter
+    def character(self, obj):
+        self._character_id = obj.id
+
+
+class CorpSnapshotMixin:
+    """
+    Provides pseudo-FK behaviour to external API corp data
+    Snapshots corp_id and provides a corp property
+    """
+    _corp_id = models.PositiveIntegerField()
+
+    @property
+    def corp(self):
+        try:
+            return eve_provider_factory().get_corp(self._corp_id)
+        except ObjectNotFound:
+            return None
+
+    @corp.setter
+    def corp(self, obj):
+        self._corp_id = obj.id
+
+
+class AllianceSnapshotMixin:
+    """
+    Provides pseudo-FK behaviour to external API alliance data
+    Snapshots alliance_id and provides a alliance property
+    """
+    _alliance_id = models.PositiveIntegerField()
+
+    @property
+    def alliance(self):
+        try:
+            return eve_provider_factory().get_alliance(self._alliance_id)
+        except ObjectNotFound:
+            return None
+
+    @alliance.setter
+    def alliance(self, obj):
+        self._alliance_id = obj.id
 
 
 @python_2_unicode_compatible
@@ -21,78 +140,66 @@ class BaseEntity(models.Model):
     def __str__(self):
         return self.name
 
+    @classmethod
+    def from_provider_obj(cls, obj):
+        """
+        Pulls data from a provider object and maps it to model attributes
+        :param obj: :class:`eveonline.providers.Entity` or subclass
+        :return: :class:`eveonline.models.BaseEntity` or subclass
+        """
+        fields = [field.name for field in cls._meta.fields]
+        values = {}
+        for f in fields:
+            # iterate over field names and get data from object
+            chain = f.split('_')
+            if len(chain) == 1:
+                # this is likely id or name, don't need to follow properties
+                values[f] = getattr(obj, chain[0])
+            else:
+                # this is likely a nested attribute, such as corp_name -> corp.name
+                # get the corp/alliance property, then get the id/name property of it
+                values[f] = getattr(getattr(obj, chain[0]), chain[1])
+        return cls(**values)
+
+    def update(self, provider=None):
+        """
+        Updates the corp/alliance info from external source
+        :param provider: :class:`eveonline.providers.EveProvider`
+        :return: :class:`eveonline.models.BaseEntity` or subclass
+        """
+        provider = provider or eve_provider_factory()
+        self = self.from_provider_obj(provider.get_character(self.id))
+        self.save()
+        return self
+
 
 @python_2_unicode_compatible
 class Character(BaseEntity):
     """
     Model representing a character from EVE Online
     """
-    corp_id = models.PositiveIntegerField(null=True)
-    corp_name = models.CharField(max_length=254)
+    corp_id = models.PositiveIntegerField()
+    corp_name = models.CharField(max_length=30)
     alliance_id = models.PositiveIntegerField(null=True, blank=True)
-    alliance_name = models.CharField(max_length=254, null=True, blank=True)
-    faction_id = models.PositiveIntegerField(null=True, blank=True)
-    faction_name = models.CharField(max_length=254, null=True, blank=True)
+    alliance_name = models.CharField(max_length=30, null=True, blank=True)
 
     objects = CharacterManager()
 
-    def update(self, char_info=None):
+    @classmethod
+    def from_provider_obj(cls, char):
         """
-        Update model information from EVE API
+        Converts a provider-returned object to a django model
+        :param char: :class:`eveonline.providers.Character`
+        :return: :class:`eveonline.models.Character`
         """
-        if not char_info:
-            api = evelink.eve.EVE()
-            result = api.affiliations_for_characters(self.id).result
-            if not self.id in result:
-                raise ValueError("evelink result does not contain character information.")
-            else:
-                char_info = result[self.id]
-        if (not 'name' in char_info) or (not 'id' in char_info) or (not 'corp' in char_info):
-            raise ValueError("Passed char_info missing required fields for updating character.")
-        if not char_info['name']:
-            raise KeyError("Received empty response from evelink for character update.")
-        if self.id != char_info['id']:
-            raise ValueError("Received api result for different character id.")
-        update_fields = []
-        if self.name != char_info['name']:
-            self.name = char_info['name']
-            update_fields.append('name')
-        if self.corp_id != char_info['corp']['id']:
-            self.corp_id = char_info['corp']['id']
-            update_fields.append('corp_id')
-        if self.corp_name != char_info['corp']['name']:
-            self.corp_name = char_info['corp']['name']
-            update_fields.append('corp_name')
-        if 'faction' in char_info:
-            if self.faction_id != char_info['faction']['id']:
-                self.faction_id = char_info['faction']['id']
-                update_fields.append('faction_id')
-            if self.faction_name != char_info['faction']['name']:
-                self.faction_name = char_info['faction']['name']
-                update_fields.append('faction_name')
-        else:
-            if self.faction_id:
-                self.faction_id = None
-                update_fields.append('faction_id')
-            if self.faction_name:
-                self.faction_name = None
-                update_fields.append('faction_name')
-        if 'alliance' in char_info:
-            if self.alliance_id != char_info['alliance']['id']:
-                self.alliance_id = char_info['alliance']['id']
-                update_fields.append('alliance_id')
-            if self.alliance_name != char_info['alliance']['name']:
-                self.alliance_name = char_info['alliance']['name']
-                update_fields.append('alliance_name')
-        else:
-            if self.alliance_id:
-                self.alliance_id = None
-                update_fields.append('alliance_id')
-            if self.alliance_name:
-                self.alliance_name = None
-                update_fields.append('alliance_name')
-        if update_fields:
-            self.save(update_fields=update_fields)
+        return cls(
+            id=char.id,
+            name=char.name,
+            corp_id=char.corp.id,
+            corp_name=char.corp.name,
+            alliance_id=char.alliance.id,
+            alliance_name=char.alliance.name,
+        )
 
 
 @python_2_unicode_compatible
@@ -107,38 +214,6 @@ class Corporation(BaseEntity):
 
     objects = CorporationManager()
 
-    def update(self, result=None):
-        """
-        Update model information from EVE API
-        """
-        if not result:
-            a = evelink.api.API()
-            api = evelink.corp.Corp(a)
-            result = api.corporation_sheet(corp_id=self.id).result
-        if (not 'name' in result) or (not 'alliance' in result) or (not 'members' in result) or (
-        not 'ticker' in result):
-            raise ValueError("Passed corp result missing required fields for corp update.")
-        if self.id != result['id']:
-            raise ValueError("Received api result for different corp id.")
-        update_fields = []
-        if self.name != result['name']:
-            self.name = result['name']
-            update_fields.append('name')
-        if self.alliance_id != result['alliance']['id']:
-            self.alliance_id = result['alliance']['id']
-            update_fields.append('alliance_id')
-        if self.alliance_name != result['alliance']['name']:
-            self.alliance_name = result['alliance']['name']
-            update_fields.append('alliance_name')
-        if self.members != result['members']['current']:
-            self.members = result['members']['current']
-            update_fields.append('members')
-        if self.ticker != result['ticker']:
-            self.ticker = result['ticker']
-            update_fields.append('ticker')
-        if update_fields:
-            self.save(update_fields=update_fields)
-
 
 @python_2_unicode_compatible
 class Alliance(BaseEntity):
@@ -149,23 +224,13 @@ class Alliance(BaseEntity):
 
     objects = AllianceManager()
 
-    def update(self, alliance_info=None):
-        """
-        Update model information from CREST
-        """
-        if not alliance_info:
-            r = requests.get(ALLIANCES % self.id)
-            r.raise_for_status()
-            alliance_info = r.json()
-        update_fields = []
-        if self.name != alliance_info['name']:
-            self.name = alliance_info['name']
-            update_fields.append('name')
-        if self.ticker != alliance_info['shortName']:
-            self.ticker = alliance_info['shortName']
-            update_fields.append('ticker')
-        if update_fields:
-            self.save(update_fields=update_fields)
+
+@python_2_unicode_compatible
+class ItemType(BaseEntity):
+    """
+    Model representing an item type from EVE Online
+    """
+    pass
 
 
 @python_2_unicode_compatible
@@ -197,8 +262,7 @@ class ApiKey(models.Model):
         try:
             api = evelink.api.API(api_key=(self.id, self.vcode))
             account = evelink.account.Account(api=api)
-            info = account.key_info()
-            return True
+            return bool(account.key_info())
         except evelink.api.APIError as e:
             if int(e.code) == 403:
                 return False
@@ -232,7 +296,7 @@ class ApiKey(models.Model):
                 for id in key_info['characters']:
                     corp_id = key_info['characters'][id]['corp']['id']
                     break
-                api_corp = evelink.corp.Corp(api=api).corporation_sheet(corp_id=corp_id).result
+                assert evelink.corp.Corp(api=api).corporation_sheet(corp_id=corp_id).result
                 corp, c = Corporation.objects.get_or_create(id=corp_id)
                 if self.corp != corp:
                     self.corp = corp
@@ -251,7 +315,7 @@ class ApiKey(models.Model):
                 raise e
             else:
                 update_fields = []
-                if self.is_valid or self.is_valid == None:
+                if self.is_valid or self.is_valid is None:
                     self.is_valid = False
                     update_fields.append('is_valid')
                 if self.characters.all().exists():

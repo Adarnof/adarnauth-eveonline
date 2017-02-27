@@ -1,16 +1,13 @@
 from __future__ import unicode_literals
 from django.db import models
-import evelink
-import requests
-from eveonline.endpoints import ALLIANCES
+from eveonline.providers import eve_provider_factory, ObjectNotFound
 
-DOOMHEIM_CORP_ID = 1000001
 
 class BaseManager(models.Manager):
     class Meta:
         abstract = True
 
-    def check_id(self, id):
+    def check_id(self, object_id):
         """
         Verifies supplied ID is valid.
         """
@@ -27,53 +24,35 @@ class BaseManager(models.Manager):
         model.update()
         return model
 
+
 class CharacterManager(BaseManager):
-    def check_id(self, id):
+    def check_id(self, char_id):
         """
-        Ensures character is real and is still alive.
+        Ensures the character ID is valid
         """
-        api = evelink.eve.EVE()
-        result = api.affiliations_for_characters(id).result[id]
-        if result['name']:
-            if result['corp']['id'] == DOOMHEIM_CORP_ID:
-                # character has been biomassed
-                return False
-            else:
-                return True
-        else:
+        try:
+            return bool(eve_provider_factory().get_character(char_id))
+        except ObjectNotFound:
             return False
+
 
 class CorporationManager(BaseManager):
-    def check_id(self, id):
-         """
-         Ensures corporation is real and has not closed.
-         """
-         try:
-            a = evelink.api.API()
-            api = evelink.corp.Corp(a)
-            result = api.corporation_sheet(corp_id=id).result
-            return True
-        except evelink.api.APIError as e:
-            if int(e.code) == 523:
-                # corp has been closed
-                return False
-            else:
-                raise e
+    def check_id(self, corp_id):
+        """
+        Ensures corporation ID is valid
+        """
+        try:
+            return bool(eve_provider_factory().get_corp(corp_id))
+        except ObjectNotFound:
+            return False
+
 
 class AllianceManager(BaseManager):
-    def check_id(self, id):
+    def check_id(self, alliance_id):
         """
-        Ensures alliance is real and has not closed.
+        Ensures alliance ID is valid
         """
-        r = requests.get(ALLIANCES % id)
-        if r.status_code == 200:
-            return True
-        elif r.status_code == 403:
+        try:
+            return bool(eve_provider_factory().get_alliance(alliance_id))
+        except ObjectNotFound:
             return False
-        else:
-            e = evelink.api.APIError()
-            e.code = r.status_code
-            e.message = "Unexpected CREST error occured"
-            e.expires = None
-            e.timestamp = datetime.datetime.utcnow()
-            raise e
