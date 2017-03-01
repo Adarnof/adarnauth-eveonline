@@ -271,7 +271,7 @@ class EveProvider(object):
 @python_2_unicode_compatible
 class EveSwaggerProvider(EveProvider):
     def __init__(self, token=None, adapter=None):
-        self.client = esi_client_factory(token=token, Alliance='v1', Character='v4', Corporation='v2', Universe='v2')
+        self.client = esi_client_factory(token=token, Alliance='v1', Character='v4', Corporation='v3', Universe='v2')
         self.adapter = adapter or self
 
     def __str__(self):
@@ -293,9 +293,21 @@ class EveSwaggerProvider(EveProvider):
         except HTTPNotFound:
             raise ObjectNotFound(alliance_id, 'alliance')
 
+    @staticmethod
+    def _faction_name_to_id(name):
+        factions = esi_client_factory(Universe='v1').get_factions().result()
+        try:
+            return [f['faction_id'] for f in factions if f['name'].startswith(name)][0]
+        except KeyError:
+            return None
+
     def get_corporation(self, corp_id):
         try:
             data = self.client.Corporation.get_corporations_corporation_id(corporation_id=corp_id).result()
+            if 'faction' in data:
+                faction_id = self._faction_name_to_id(data['faction'])
+            else:
+                faction_id = None
             model = Corporation(
                 self.adapter,
                 corp_id,
@@ -304,7 +316,7 @@ class EveSwaggerProvider(EveProvider):
                 data['ceo_id'],
                 data['member_count'],
                 data['alliance_id'] if 'alliance_id' in data else None,
-                data['faction'] if 'faction' in data else None,
+                faction_id
             )
             return model
         except HTTPNotFound:
@@ -334,7 +346,7 @@ class EveSwaggerProvider(EveProvider):
 
     def get_faction(self, faction_id):
         try:
-            data = self.client.Universe.get_factions().result()
+            data = esi_client_factory(Universe='v1').Universe.get_factions().result()
             faction_data = [faction for faction in data if faction['faction_id'] == faction_id][0]
             return Faction(self, faction_data['faction_id'], faction_data['name'], faction_data['description'])
         except KeyError:

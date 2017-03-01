@@ -77,6 +77,10 @@ class ItemTypeField(EveEntityField):
     object_class = ProviderItemType
 
 
+class FactionField(EveEntityField):
+    object_class = ProviderFaction
+
+
 class AllianceSnapshotMixin(object):
     """
     Provides pseudo-FK behaviour to external API alliance data
@@ -135,7 +139,7 @@ class FactionSnapshotMixin(object):
         try:
             return eve_provider_factory().get_faction(self.faction_id)
         except ObjectNotFound:
-            None
+            return None
 
     @faction.setter
     def faction(self, obj):
