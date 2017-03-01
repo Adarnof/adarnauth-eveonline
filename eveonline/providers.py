@@ -30,7 +30,10 @@ class Entity(object):
         self.name = name
 
     def __str__(self):
-        return self.name
+        return str(self.name)
+
+    def __int__(self):
+        return int(self.id)
 
     def __repr__(self):
         return "<{} ({}): {}>".format(self.__class__.__name__, self.obj_id, self.name)
@@ -39,7 +42,7 @@ class Entity(object):
         return bool(self.obj_id)
 
     def __eq__(self, other):
-        return self.obj_id == other.obj_id
+        return int(self) == int(other) and str(self) == str(other)
 
     def serialize(self):
         return {
@@ -105,32 +108,32 @@ class Alliance(Entity):
         super(Alliance, self).__init__(obj_id, name)
         self.provider = provider
         self.ticker = ticker
-        self.corp_ids = corp_ids
-        self.executor_corp_id = executor_corp_id
+        self.corporation_ids = corp_ids
+        self.executor_corporation_id = executor_corp_id
         self._corps = {}
 
-    def corp(self, corp_id):
-        assert corp_id in self.corp_ids
+    def corporation(self, corp_id):
+        assert corp_id in self.corporation_ids
         if corp_id not in self._corps:
-            self._corps[corp_id] = self.provider.get_corp(corp_id)
+            self._corps[corp_id] = self.provider.get_corporation(corp_id)
             self._corps[corp_id]._alliance = self
         return self._corps[corp_id]
 
     @property
-    def corps(self):
-        return sorted([self.corp(corp_id) for corp_id in self.corp_ids], key=lambda x: x.name)
+    def corporations(self):
+        return sorted([self.corporation(corp_id) for corp_id in self.corporation_ids], key=lambda x: x.name)
 
     @property
-    def executor_corp(self):
-        return self.corp(self.executor_corp_id)
+    def executor_corporation(self):
+        return self.corporation(self.executor_corporation_id)
 
     def serialize(self):
         return {
             'id': self.id,
             'name': self.name,
             'ticker': self.ticker,
-            'corp_ids': self.corp_ids,
-            'executor_corp_id': self.executor_corp_id,
+            'corporation_ids': self.corporation_ids,
+            'executor_corporation_id': self.executor_corporation_id,
         }
 
     @classmethod
@@ -140,8 +143,8 @@ class Alliance(Entity):
             obj_dict['id'],
             obj_dict['name'],
             obj_dict['ticker'],
-            obj_dict['corp_ids'],
-            obj_dict['executor_corp_id'],
+            obj_dict['corporation_ids'],
+            obj_dict['executor_corporation_id'],
         )
 
 
@@ -149,28 +152,28 @@ class Character(Entity):
     def __init__(self, provider, obj_id, name, corp_id, alliance_id):
         super(Character, self).__init__(obj_id, name)
         self.provider = provider
-        self.corp_id = corp_id
+        self.corporation_id = corp_id
         self.alliance_id = alliance_id
-        self._corp = None
+        self._corporation = None
         self._alliance = None
 
     @property
-    def corp(self):
-        if not self._corp:
-            self._corp = self.provider.get_corp(self.corp_id)
-        return self._corp
+    def corporation(self):
+        if not self._corporation:
+            self._corporation = self.provider.get_corporation(self.corporation_id)
+        return self._corporation
 
     @property
     def alliance(self):
         if self.alliance_id:
-            return self.corp.alliance
+            return self.corporation.alliance
         return Entity(None, None)
 
     def serialize(self):
         return {
             'id': self.id,
             'name': self.name,
-            'corp_id': self.corp_id,
+            'corporation_id': self.corporation_id,
             'alliance_id': self.alliance_id,
         }
 
@@ -180,7 +183,7 @@ class Character(Entity):
             None,
             obj_dict['id'],
             obj_dict['name'],
-            obj_dict['corp_id'],
+            obj_dict['corporation_id'],
             obj_dict['alliance_id'],
         )
 

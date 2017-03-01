@@ -10,10 +10,9 @@ setup(
     name='adarnauth-eveonline',
     version='0.1',
     install_requires=[
-        'requests>=2.9.1',
-        'django>=1.9.1',
+        'django>=1.10,<2.0',
         'evelink>=0.7.4',
-        'django-celery',
+        'celery>=4.0',
         'adarnauth-esi>=1.2.2',
     ],
     packages=find_packages(),
@@ -21,7 +20,7 @@ setup(
     license='GNU GPLv3',
     description='A Django app for handling data structures from EVE Online.',
     long_description=README,
-    url='https://adarnauth.com/',
+    url='https://adarnauth.tech/',
     author='Adarnof',
     author_email='adarnof@gmail.com',
     classifiers=[

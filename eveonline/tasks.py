@@ -1,90 +1,72 @@
 from celery.task import periodic_task
-from celery.decorators import task
-from eveonline.models import Character, Corporation, Alliance, ApiKey
+from celery import shared_task
+from eveonline.models import Character, Corporation, Alliance
+from eveonline.providers import eve_provider_factory
 from datetime import timedelta
-import evelink
 
 
-@task
-def update_character(obj_id, char_info):
+@shared_task
+def update_character(obj_id, provider=None):
     """
-    Task to update a character with supplied data from
-    evelink on a separate thread.
+    Updates a given character model asynchronously
+    :param obj_id: Alliance ID to update
+    :param provider: :class:`eveonline.provders.EveProvider`
     """
     char = Character.objects.get(id=obj_id)
-    char.update(char_info=char_info)
+    char.update(provider=provider)
 
 
-@task
-def update_corp(obj_id):
+@shared_task
+def update_corporation(obj_id, provider=None):
     """
-    Task to update a corp on a separate thread.
+    Updates a given corporation model asynchronously
+    :param obj_id: Alliance ID to update
+    :param provider: :class:`eveonline.provders.EveProvider`
     """
     corp = Corporation.objects.get(id=obj_id)
-    corp.update()
+    corp.update(provider=provider)
 
 
-@task
-def update_alliance(obj_id, alliance_info):
+@shared_task
+def update_alliance(obj_id, provider=None):
     """
-    Task to update an alliance with supplied data from
-    CREST on a separate thread.
+    Updates a given alliance model asynchronously
+    :param obj_id: Alliance ID to update
+    :param provider: :class:`eveonline.provders.EveProvider`
     """
     alliance = Alliance.objects.get(id=obj_id)
-    alliance.update(alliance_info=alliance_info)
-
-
-@task
-def update_api_key(obj_id):
-    """
-    Task to update an API key on a separate thread.
-    """
-    api = ApiKey.objects.get(id=obj_id)
-    api.update()
+    alliance.update(provider=provider)
 
 
 @periodic_task(run_every=timedelta(hours=3))
 def update_all_characters():
     """
-    Triggers an update of all Character models using
-    one API call to get all information.
+    Triggers an update of all Character models
     """
     char_ids = [c.id for c in Character.objects.all()]
-    api = evelink.eve.EVE()
-    result = api.affiliations_for_characters(char_ids).result
-    for obj_id in result:
-        update_character.delay(obj_id, result[obj_id])
+    provider = eve_provider_factory()
+    for obj_id in char_ids:
+        update_character.delay(obj_id, provider=provider)
 
 
 @periodic_task(run_every=timedelta(hours=8))
 def update_all_corps():
     """
-    Triggers an update of all Corporation models.
+    Triggers an update of all Corporation models
     """
     corp_ids = [c.id for c in Corporation.objects.all()]
+    provider = eve_provider_factory()
     for obj_id in corp_ids:
-        update_corp.delay(obj_id)
+        update_corporation.delay(obj_id, provider=provider)
 
 
-@periodic_task(run_every=timedelta(hours=8))
+@shared_task  # data only changes very rarely on CCP intervention, don't queue periodically
 def update_all_alliances():
     """
-    Triggers an update of all Alliance models using
-    one API call to get all information.
+    Triggers an update of all Alliance models
     """
     alliance_ids = [a.id for a in Alliance.objects.all()]
-    api = evelink.eve.EVE()
-    result = api.alliances().result
+    provider = eve_provider_factory()
     for obj_id in alliance_ids:
-        if obj_id in result:
-            update_alliance.delay(obj_id, result[obj_id])
+        update_alliance.delay(obj_id, provider=provider)
 
-
-@periodic_task(run_every=timedelta(hours=6))
-def update_all_api_keys():
-    """
-    Triggers an update of all Api Key models.
-    """
-    api_ids = [a.id for a in ApiKey.objects.exclude(is_valid=False)]
-    for obj_id in api_ids:
-        update_api_key.delay(obj_id)

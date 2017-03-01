@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from eveonline.models import Character, Corporation, Alliance, ApiKey
+from eveonline.models import Character, Corporation, Alliance
 
 
 class CharacterForm(forms.ModelForm):
@@ -178,63 +178,6 @@ class AllianceForm(forms.ModelForm):
             return None
 
 
-class ApiKeyForm(forms.ModelForm):
-    characters_on_key = forms.CharField(widget=forms.Textarea(attrs={'readonly': True}), required=False)
-
-    class Meta:
-        exclude = ['characters']
-
-    def __init__(self, *args, **kwargs):
-        super(ApiKeyForm, self).__init__(*args, **kwargs)
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            self.fields['id'].widget.attrs['readonly'] = True
-            self.fields['vcode'].widget.attrs['readonly'] = True
-        self.fields['is_valid'].widget.attrs['disabled'] = True
-        self.fields['type'].widget.attrs['disabled'] = True
-        self.fields['access_mask'].widget.attrs['readonly'] = True
-        self.fields['corp'].widget.attrs['disabled'] = True
-        if instance and instance.pk:
-            chars = ""
-            for char in instance.characters.all():
-                chars = chars + str(char) + "\n"
-            self.fields['characters_on_key'].initial = chars.strip("\n")
-
-    def clean_is_valid(self):
-        instance = getattr(self, 'instance', None)
-        if instance:
-            return instance.is_valid
-        else:
-            return None
-
-    def clean_access_mask(self):
-        instance = getattr(self, 'instance', None)
-        if instance:
-            return instance.access_mask
-        else:
-            return 0
-
-    def clean_type(self):
-        instance = getattr(self, 'instance', None)
-        if instance:
-            return instance.type
-        else:
-            return None
-
-    def clean_corp(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            if self.cleaned_data['corp'] != instance.corp:
-                self.data['corp'] = instance.corp
-                raise forms.ValidationError("Automatically determined, cannot be manually set")
-            else:
-                return instance.corp
-        elif self.cleaned_data['corp']:
-            self.data['corp'] = None
-            raise forms.ValidationError("Automatically determined, cannot be manually set")
-        return None
-
-
 @admin.register(Character)
 class CharacterAdmin(admin.ModelAdmin):
     form = CharacterForm
@@ -249,7 +192,3 @@ class CorporationAdmin(admin.ModelAdmin):
 class AllianceAdmin(admin.ModelAdmin):
     form = AllianceForm
 
-
-@admin.register(ApiKey)
-class ApiKeyAdmin(admin.ModelAdmin):
-    form = ApiKeyForm
