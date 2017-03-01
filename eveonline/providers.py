@@ -56,15 +56,17 @@ class Entity(object):
 
 
 class Corporation(Entity):
-    def __init__(self, provider, obj_id, name, ticker, ceo_id, members, alliance_id):
+    def __init__(self, provider, obj_id, name, ticker, ceo_id, members, alliance_id, faction_id):
         super(Corporation, self).__init__(obj_id, name)
         self.provider = provider
         self.ticker = ticker
         self.ceo_id = ceo_id
         self.members = members
         self.alliance_id = alliance_id
+        self.faction_id = faction_id
         self._alliance = None
         self._ceo = None
+        self._faction = None
 
     @property
     def alliance(self):
@@ -80,6 +82,14 @@ class Corporation(Entity):
             self._ceo = self.provider.get_character(self.ceo_id)
         return self._ceo
 
+    @property
+    def faction(self):
+        if self.faction_id:
+            if not self._faction:
+                self._faction = self.provider.get_faction(self.faction_id)
+            return self._faction
+        return Entity(None, None)
+
     def serialize(self):
         return {
             'id': self.id,
@@ -87,7 +97,8 @@ class Corporation(Entity):
             'ticker': self.ticker,
             'ceo_id': self.ceo_id,
             'members': self.members,
-            'alliance_id': self.alliance_id
+            'alliance_id': self.alliance_id,
+            'faction_id': self.faction_id,
         }
 
     @classmethod
@@ -100,6 +111,7 @@ class Corporation(Entity):
             obj_dict['ceo_id'],
             obj_dict['members'],
             obj_dict['alliance_id'],
+            obj_dict['faction_id'],
         )
 
 
@@ -202,6 +214,28 @@ class ItemType(Entity):
         )
 
 
+class Faction(Entity):
+    def __init__(self, provider, faction_id, name, description):
+        super(Faction, self).__init__(faction_id, name)
+        self.description = description
+        self.provider = provider
+
+    def serialize(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, data_dict):
+        return cls(
+            data_dict['id'],
+            data_dict['name'],
+            data_dict['description'],
+        )
+
+
 class EveProvider(object):
     def get_alliance(self, alliance_id):
         """
@@ -225,7 +259,13 @@ class EveProvider(object):
         """
         :return: an ItemType object for the given ID
         """
-        raise NotImplemented()
+        raise NotImplementedError()
+
+    def get_faction(self, faction_id):
+        """
+        :return: a Faction object for the given ID
+        """
+        raise NotImplementedError()
 
 
 @python_2_unicode_compatible
@@ -264,6 +304,7 @@ class EveSwaggerProvider(EveProvider):
                 data['ceo_id'],
                 data['member_count'],
                 data['alliance_id'] if 'alliance_id' in data else None,
+                data['faction'] if 'faction' in data else None,
             )
             return model
         except HTTPNotFound:
@@ -291,6 +332,14 @@ class EveSwaggerProvider(EveProvider):
         except (HTTPNotFound, HTTPUnprocessableEntity):
             raise ObjectNotFound(type_id, 'type')
 
+    def get_faction(self, faction_id):
+        try:
+            data = self.client.Universe.get_factions().result()
+            faction_data = [faction for faction in data if faction['faction_id'] == faction_id][0]
+            return Faction(self, faction_data['faction_id'], faction_data['name'], faction_data['description'])
+        except KeyError:
+            raise ObjectNotFound(faction_id, 'faction')
+
 
 @python_2_unicode_compatible
 class EveXmlProvider(EveProvider):
@@ -309,36 +358,37 @@ class EveXmlProvider(EveProvider):
         alliances = api.alliances().result
         try:
             results = alliances[int(obj_id)]
+            model = Alliance(
+                self.adapter,
+                obj_id,
+                results['name'],
+                results['ticker'],
+                results['member_corps'],
+                results['executor_id'],
+            )
+            return model
         except KeyError:
             raise ObjectNotFound(obj_id, 'alliance')
-        model = Alliance(
-            self.adapter,
-            obj_id,
-            results['name'],
-            results['ticker'],
-            results['member_corps'],
-            results['executor_id'],
-        )
-        return model
 
     def get_corporation(self, obj_id):
         api = evelink.corp.Corp(api=self.api)
         try:
             corpinfo = api.corporation_sheet(corp_id=int(obj_id)).result
+            model = Corporation(
+                self.adapter,
+                obj_id,
+                corpinfo['name'],
+                corpinfo['ceo']['id'],
+                corpinfo['members']['current'],
+                corpinfo['ticker'],
+                corpinfo['alliance']['id'] if corpinfo['alliance'] else None,
+                corpinfo['faction']['id'] if corpinfo['faction'] else None,
+            )
+            return model
         except evelink.api.APIError as e:
             if int(e.code) == 523:
                 raise ObjectNotFound(obj_id, 'corporation')
             raise e
-        model = Corporation(
-            self.adapter,
-            obj_id,
-            corpinfo['name'],
-            corpinfo['ceo']['id'],
-            corpinfo['members']['current'],
-            corpinfo['ticker'],
-            corpinfo['alliance']['id'] if corpinfo['alliance'] else None,
-        )
-        return model
 
     def _build_character(self, result):
         return Character(
@@ -353,11 +403,11 @@ class EveXmlProvider(EveProvider):
         api = evelink.eve.EVE(api=self.api)
         try:
             charinfo = api.character_info_from_id(obj_id).result
+            return self._build_character(charinfo)
         except evelink.api.APIError as e:
             if int(e.code) == 105:
                 raise ObjectNotFound(obj_id, 'character')
             raise e
-        return self._build_character(charinfo)
 
     def get_itemtype(self, obj_id):
         api = evelink.eve.EVE(api=self.api)
@@ -367,6 +417,16 @@ class EveXmlProvider(EveProvider):
             return ItemType(self.adapter, obj_id, type_name)
         except AssertionError:
             raise ObjectNotFound(obj_id, 'itemtype')
+
+    def get_faction(self, faction_id):
+        api = evelink.eve.EVE(api=self.api)
+        try:
+            result = api.character_info_from_id(faction_id).result
+            return Faction(self, faction_id, result['name'], None)
+        except evelink.api.APIError as e:
+            if int(e.code) == 105:
+                raise ObjectNotFound(faction_id, 'faction')
+            raise e
 
 
 class CachingProviderWrapper(EveProvider):
@@ -447,6 +507,18 @@ class CachingProviderWrapper(EveProvider):
             self._cache(obj)
         return obj
 
+    def get_faction(self, obj_id, new=False):
+        if new:
+            obj = None
+        else:
+            obj = self._get_from_cache(Faction, obj_id)
+        if obj:
+            obj.provider = self
+        else:
+            obj = self._get_faction(obj_id)
+            self._cache(obj)
+        return obj
+
     def _get_character(self, obj_id):
         return self.provider.get_character(obj_id)
 
@@ -458,6 +530,9 @@ class CachingProviderWrapper(EveProvider):
 
     def _get_itemtype(self, obj_id):
         return self.provider.get_itemtype(obj_id)
+
+    def _get_faction(self, obj_id):
+        return self.provider.get_faction(obj_id)
 
 
 def eve_provider_factory(api_key=None, token=None, default_provider=None):
