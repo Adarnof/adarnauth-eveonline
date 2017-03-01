@@ -182,7 +182,9 @@ class CorporationSnapshotMixin(NullAllianceSnapshotMixin, NullFactionSnapshotMix
     @property
     def corporation(self):
         try:
-            return eve_provider_factory().get_corporation(self.corporation_id)
+            corp = eve_provider_factory().get_corporation(self.corporation_id)
+            corp.alliance = self.alliance
+            corp.faction = self.faction
         except ObjectNotFound:
             return None
 
@@ -204,7 +206,8 @@ class CharacterSnapshotMixin(CorporationSnapshotMixin):
     @property
     def character(self):
         try:
-            return eve_provider_factory().get_character(self.character_id)
+            char = eve_provider_factory().get_character(self.character_id)
+            char.corporation = self.corporation
         except ObjectNotFound:
             return None
 

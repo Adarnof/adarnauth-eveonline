@@ -76,6 +76,15 @@ class Corporation(Entity):
             return self._alliance
         return Entity(None, None)
 
+    @alliance.setter
+    def alliance(self, obj):
+        if obj:
+            self.alliance_id = obj.id
+            self._alliance = obj
+        else:
+            self.alliance_id = None
+            self._alliance = None
+
     @property
     def ceo(self):
         if not self._ceo:
@@ -89,6 +98,15 @@ class Corporation(Entity):
                 self._faction = self.provider.get_faction(self.faction_id)
             return self._faction
         return Entity(None, None)
+
+    @faction.setter
+    def faction(self, obj):
+        if obj:
+            self.faction_id = obj.id
+            self._faction = obj
+        else:
+            self.faction_id = None
+            self._faction = None
 
     def serialize(self):
         return {
@@ -161,13 +179,11 @@ class Alliance(Entity):
 
 
 class Character(Entity):
-    def __init__(self, provider, obj_id, name, corp_id, alliance_id):
+    def __init__(self, provider, obj_id, name, corp_id):
         super(Character, self).__init__(obj_id, name)
         self.provider = provider
         self.corporation_id = corp_id
-        self.alliance_id = alliance_id
         self._corporation = None
-        self._alliance = None
 
     @property
     def corporation(self):
@@ -175,11 +191,14 @@ class Character(Entity):
             self._corporation = self.provider.get_corporation(self.corporation_id)
         return self._corporation
 
+    @corporation.setter
+    def corporation(self, obj):
+        self.corporation_id = obj.id
+        self._corporation = obj
+
     @property
     def alliance(self):
-        if self.alliance_id:
-            return self.corporation.alliance
-        return Entity(None, None)
+        return self.corporation.alliance
 
     def serialize(self):
         return {
@@ -325,13 +344,11 @@ class EveSwaggerProvider(EveProvider):
     def get_character(self, character_id):
         try:
             data = self.client.Character.get_characters_character_id(character_id=character_id).result()
-            alliance_id = self.adapter.get_corporation(data['corporation_id']).alliance_id
             model = Character(
                 self.adapter,
                 character_id,
                 data['name'],
                 data['corporation_id'],
-                alliance_id,
             )
             return model
         except (HTTPNotFound, HTTPUnprocessableEntity):
@@ -408,7 +425,6 @@ class EveXmlProvider(EveProvider):
             result['id'],
             result['name'],
             result['corp']['id'],
-            result['alliance']['id'],
         )
 
     def get_character(self, obj_id):
