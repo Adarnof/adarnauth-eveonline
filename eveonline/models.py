@@ -12,21 +12,19 @@ class EveEntityValidator(validators.BaseValidator):
     Ensures provided ID is valid for expected EVE entity type
     """
 
-    @staticmethod
-    def compare(obj_id, expected_type):
+    def compare(self, obj_id, expected_type):
         try:
             return bool(getattr(eve_provider_factory(), 'get_%s' % expected_type.__class__.__name__.lower())(obj_id))
         except ObjectNotFound:
             return False
 
-    @staticmethod
-    def clean(obj):
+    def clean(self, obj):
         return obj.id
 
 
 class EveEntityField(models.BigIntegerField):
     """
-    Abstract superclass for EVE Item storage
+    Abstract superclass for EVE item storage
     Subclasses must override the object class
     """
 
@@ -53,12 +51,6 @@ class EveEntityField(models.BigIntegerField):
             return None
         else:
             return self._get_object(value)
-
-    def get_prep_value(self, value):
-        if value is None:
-            return value
-        else:
-            return super(EveEntityField, self).get_prep_value(value.id)
 
 
 class CharacterField(EveEntityField):
@@ -224,7 +216,7 @@ class BaseEntity(models.Model):
     Abstract base class for EVE Online objects.
     """
     id = models.PositiveIntegerField(unique=True)
-    name = models.CharField(unique=True, max_length=254)
+    name = models.CharField(unique=True, max_length=37)
 
     class Meta:
         abstract = True
@@ -236,7 +228,7 @@ class BaseEntity(models.Model):
     def map_obj_attributes(cls, obj):
         """
         Updates model attribute values from provider object
-        :param obj: :class:`eveonline.providers.EveEntity`
+        :param obj: :class:`eveonline.providers.Entity`
         :return: Dictionary of attribute_name:value
         """
         fields = [field.name for field in cls._meta.fields]

@@ -374,9 +374,9 @@ class EveSwaggerProvider(EveProvider):
 class EveXmlProvider(EveProvider):
     def __init__(self, api_key=None, adapter=None):
         """
-        :param api_key: eveonline.EveApiKeyPair
+        :param api_key: tuple of api_id, verification_code
         """
-        self.api = evelink.api.API(api_key=(api_key.api_id, api_key.api_key)) if api_key else evelink.api.API()
+        self.api = evelink.api.API(api_key=api_key) if api_key else evelink.api.API()
         self.adapter = adapter or self
 
     def __str__(self):
