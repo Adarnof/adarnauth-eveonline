@@ -49,6 +49,12 @@ class Entity(object):
         self.__dict__.update(state)
         self._provider = None
 
+    def __getstate__(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+        }
+
     @property
     def provider(self):
         self._provider = self._provider or eve_provider_factory()
