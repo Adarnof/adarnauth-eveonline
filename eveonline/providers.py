@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # optional setting to control cached object lifespan
-OBJ_CACHE_DURATION = int(getattr(settings, 'EVEONLINE_OBJ_CACHE_DURATION', 300))
+OBJ_CACHE_DURATION = int(getattr(settings, 'EVEONLINE_OBJ_CACHE_DURATION', 600))
 
 
 @python_2_unicode_compatible
@@ -25,9 +25,10 @@ class ObjectNotFound(Exception):
 
 @python_2_unicode_compatible
 class Entity(object):
-    def __init__(self, obj_id, name):
+    def __init__(self, obj_id, name, provider=None):
         self.id = obj_id
         self.name = name
+        self._provider = provider
 
     def __str__(self):
         return str(self.name)
@@ -44,21 +45,19 @@ class Entity(object):
     def __eq__(self, other):
         return int(self) == int(other) and str(self) == str(other)
 
-    def serialize(self):
-        return {
-            'id': self.obj_id,
-            'name': self.name,
-        }
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._provider = None
 
-    @classmethod
-    def from_dict(cls, data_dict):
-        return cls(data_dict['id'], data_dict['name'])
+    @property
+    def provider(self):
+        self._provider = self._provider or eve_provider_factory()
+        return self._provider
 
 
 class Corporation(Entity):
-    def __init__(self, provider, obj_id, name, ticker, ceo_id, members, alliance_id, faction_id):
-        super(Corporation, self).__init__(obj_id, name)
-        self.provider = provider
+    def __init__(self, obj_id, name, ticker, ceo_id, members, alliance_id, faction_id, provider=None):
+        super(Corporation, self).__init__(obj_id, name, provider=provider)
         self.ticker = ticker
         self.ceo_id = ceo_id
         self.members = members
@@ -108,35 +107,27 @@ class Corporation(Entity):
             self.faction_id = None
             self._faction = None
 
-    def serialize(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'ticker': self.ticker,
-            'ceo_id': self.ceo_id,
-            'members': self.members,
-            'alliance_id': self.alliance_id,
-            'faction_id': self.faction_id,
-        }
-
-    @classmethod
-    def from_dict(cls, obj_dict):
-        return cls(
-            None,
-            obj_dict['id'],
-            obj_dict['name'],
-            obj_dict['ticker'],
-            obj_dict['ceo_id'],
-            obj_dict['members'],
-            obj_dict['alliance_id'],
-            obj_dict['faction_id'],
+    def __getstate__(self):
+        return super(Corporation, self).__getstate__().update(
+            {
+                'ticker': self.ticker,
+                'ceo_id': self.ceo_id,
+                'members': self.members,
+                'alliance_id': self.alliance_id,
+                'faction_id': self.faction_id,
+            }
         )
+
+    def __setstate__(self, state):
+        super(Corporation, self).__setstate__(state)
+        self._alliance = None
+        self._ceo = None
+        self._faction = None
 
 
 class Alliance(Entity):
-    def __init__(self, provider, obj_id, name, ticker, corp_ids, executor_corp_id):
-        super(Alliance, self).__init__(obj_id, name)
-        self.provider = provider
+    def __init__(self, obj_id, name, ticker, corp_ids, executor_corp_id, provider=None):
+        super(Alliance, self).__init__(obj_id, name, provider=provider)
         self.ticker = ticker
         self.corporation_ids = corp_ids
         self.executor_corporation_id = executor_corp_id
@@ -157,31 +148,23 @@ class Alliance(Entity):
     def executor_corporation(self):
         return self.corporation(self.executor_corporation_id)
 
-    def serialize(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'ticker': self.ticker,
-            'corporation_ids': self.corporation_ids,
-            'executor_corporation_id': self.executor_corporation_id,
-        }
-
-    @classmethod
-    def from_dict(cls, obj_dict):
-        return cls(
-            None,
-            obj_dict['id'],
-            obj_dict['name'],
-            obj_dict['ticker'],
-            obj_dict['corporation_ids'],
-            obj_dict['executor_corporation_id'],
+    def __getstate__(self):
+        return super(Alliance, self).__getstate__().update(
+            {
+                'ticker': self.ticker,
+                'corporation_ids': self.corporation_ids,
+                'executor_corporation_id': self.executor_corporation_id,
+            }
         )
+
+    def __setstate__(self, state):
+        super(Alliance, self).__setstate__(state)
+        self._corps = {}
 
 
 class Character(Entity):
-    def __init__(self, provider, obj_id, name, corp_id):
-        super(Character, self).__init__(obj_id, name)
-        self.provider = provider
+    def __init__(self, obj_id, name, corp_id, provider=None):
+        super(Character, self).__init__(obj_id, name, provider=provider)
         self.corporation_id = corp_id
         self._corporation = None
 
@@ -200,59 +183,35 @@ class Character(Entity):
     def alliance(self):
         return self.corporation.alliance
 
-    def serialize(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'corporation_id': self.corporation_id,
-            'alliance_id': self.alliance_id,
-        }
+    @property
+    def faction(self):
+        return self.corporation.faction
 
-    @classmethod
-    def from_dict(cls, obj_dict):
-        return cls(
-            None,
-            obj_dict['id'],
-            obj_dict['name'],
-            obj_dict['corporation_id'],
-            obj_dict['alliance_id'],
+    def __getstate__(self):
+        return super(Character, self).__getstate__().update(
+            {
+                'corporation_id': self.corporation_id,
+                'alliance_id': self.alliance_id,
+            }
         )
+
+    def __setstate__(self, state):
+        super(Character, self).__setstate__(state)
+        self._corporation = None
 
 
 class ItemType(Entity):
-    def __init__(self, provider, type_id, name):
-        super(ItemType, self).__init__(type_id, name)
-        self.provider = provider
-
-    @classmethod
-    def from_dict(cls, data_dict):
-        return cls(
-            None,
-            data_dict['id'],
-            data_dict['name'],
-        )
+    def __init__(self, type_id, name, provider=None):
+        super(ItemType, self).__init__(type_id, name, provider=provider)
 
 
 class Faction(Entity):
-    def __init__(self, provider, faction_id, name, description):
-        super(Faction, self).__init__(faction_id, name)
+    def __init__(self, faction_id, name, description, provider=None):
+        super(Faction, self).__init__(faction_id, name, provider=provider)
         self.description = description
-        self.provider = provider
 
-    def serialize(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'description': self.description,
-        }
-
-    @classmethod
-    def from_dict(cls, data_dict):
-        return cls(
-            data_dict['id'],
-            data_dict['name'],
-            data_dict['description'],
-        )
+    def __getstate__(self):
+        return super(Faction, self).__getstate__().update({'description': self.description})
 
 
 class EveProvider(object):
@@ -467,104 +426,41 @@ class CachingProviderWrapper(EveProvider):
         self.provider.adapter = self
 
     def __repr__(self):
-        skeleton = "<{} ({})>"
-        return skeleton.format(self.__class__.__name__,
-                               str(self.provider))
+        return "<{} ({})>".format(self.__class__.__name__, str(self.provider))
 
     @staticmethod
-    def _get_from_cache(obj_class, obj_id):
-        data = cache.get('%s__%s' % (obj_class.__name__.lower(), obj_id))
-        if data:
-            obj = obj_class.from_dict(data)
-            logger.debug('Got from cache: %s' % obj.__repr__())
-            return obj
+    def format_cache_key_name(obj_class, obj_id):
+        return '%s__%s' % (obj_class.__name__.lower(), obj_id)
+
+    def __get_object(self, obj_class, obj_id, new=False):
+        cache_key_name = self.format_cache_key_name(obj_class, obj_id)
+        method = getattr(self.provider, 'get_%s' % obj_class.__name__.lower())
+        if new:
+            obj = method(obj_id)
+            cache.set(cache_key_name, obj, OBJ_CACHE_DURATION)
         else:
-            return None
-
-    @staticmethod
-    def _cache(obj):
-        logger.debug('Caching: %s ' % obj.__repr__())
-        cache.set('%s__%s' % (obj.__class__.__name__.lower(), obj.id), obj.serialize(),
-                  int(OBJ_CACHE_DURATION))
+            obj = cache.get_or_set(cache_key_name, method(obj_id), OBJ_CACHE_DURATION)
+            obj.provider = self
+        return obj
 
     def get_character(self, obj_id, new=False):
-        if new:
-            obj = None
-        else:
-            obj = self._get_from_cache(Character, obj_id)
-        if obj:
-            obj.provider = self
-        else:
-            obj = self._get_character(obj_id)
-            self._cache(obj)
-        return obj
+        return self.__get_object(Character, obj_id, new=new)
 
     def get_corporation(self, obj_id, new=False):
-        if new:
-            obj = None
-        else:
-            obj = self._get_from_cache(Corporation, obj_id)
-        if obj:
-            obj.provider = self
-        else:
-            obj = self._get_corporation(obj_id)
-            self._cache(obj)
-        return obj
+        return self.__get_object(Corporation, obj_id, new=new)
 
     def get_alliance(self, obj_id, new=False):
-        if new:
-            obj = None
-        else:
-            obj = self._get_from_cache(Alliance, obj_id)
-        if obj:
-            obj.provider = self
-        else:
-            obj = self._get_alliance(obj_id)
-            self._cache(obj)
-        return obj
+        return self.__get_object(Alliance, obj_id, new=new)
 
     def get_itemtype(self, obj_id, new=False):
-        if new:
-            obj = None
-        else:
-            obj = self._get_from_cache(ItemType, obj_id)
-        if obj:
-            obj.provider = self
-        else:
-            obj = self._get_itemtype(obj_id)
-            self._cache(obj)
-        return obj
+        return self.__get_object(ItemType, obj_id, new=new)
 
     def get_faction(self, obj_id, new=False):
-        if new:
-            obj = None
-        else:
-            obj = self._get_from_cache(Faction, obj_id)
-        if obj:
-            obj.provider = self
-        else:
-            obj = self._get_faction(obj_id)
-            self._cache(obj)
-        return obj
-
-    def _get_character(self, obj_id):
-        return self.provider.get_character(obj_id)
-
-    def _get_corporation(self, obj_id):
-        return self.provider.get_corporation(obj_id)
-
-    def _get_alliance(self, obj_id):
-        return self.provider.get_alliance(obj_id)
-
-    def _get_itemtype(self, obj_id):
-        return self.provider.get_itemtype(obj_id)
-
-    def _get_faction(self, obj_id):
-        return self.provider.get_faction(obj_id)
+        return self.__get_object(Faction, obj_id, new=new)
 
 
 def eve_provider_factory(api_key=None, token=None, default_provider=None):
-    default_provider = default_provider or getattr(settings, 'EVEONLINE_DEFAULT_PROVIDER', '') or 'esi'
+    default_provider = default_provider or getattr(settings, 'EVEONLINE_DEFAULT_PROVIDER', 'esi')
 
     if default_provider.lower() == 'xml':
         provider = EveXmlProvider(api_key=api_key)

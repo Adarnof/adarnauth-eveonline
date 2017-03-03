@@ -27,9 +27,9 @@ Objects are available for `Character`, `Corporation`, `Alliance`, `Faction`, and
 
 ### Providers
 
-Providers are the API clients which provide data. Two providers are defined, one for XML and one for ESI. The `EveXmlProvider` accepts an optional API key tuple of `(api_id, verification_code)`. The `EveSwaggerProvider` accepts an optional `token` argument, being a `esi.models.Token` model from [adarnauth-esi](https://github.com/adarnof/adarnauth-esi).
+Providers are the API clients which provide data. Two providers are available, one for XML and one for ESI. The `EveXmlProvider` accepts an optional API key tuple of `(api_id, verification_code)`. The `EveSwaggerProvider` accepts an optional `token` argument, being a `esi.models.Token` model from [adarnauth-esi](https://github.com/adarnof/adarnauth-esi).
 
-Objects can be retrieved by calling the provider's `get_` methods and supplying the desired ID: for instance, to get a character, call `provider.get_character(234899860)`.
+Objects can be retrieved by calling the provider's `get_` methods and supplying the desired ID: for instance, to get a character, call `provider.get_character(234899860)`. If the ID is invalid or does not match the object type, an `ObjectNotFound` error will be raised.
 
 A provider factory is available for easy provider creation, `eveonline.providers.eve_provider_factory`. This returns the default provider as defined by `settings.EVEONLINE_DEFAULT_PROVIDER`. If unset, this defaults to the `EveSwaggerProvider`. Accepted values are `xml` and `esi`.
 
@@ -37,7 +37,7 @@ It is highly recommended to use the `EveSwaggerProvider` as default due to the d
 
 ### Caching
 
-The provider factory returns a wrapper provider which automatically caches results. This will greatly speed up related calls. The default caching time can be altered by defining `settings.EVEONLINE_OBJ_CACHE_DURATION`, in secods.
+The provider factory returns a wrapper provider which automatically caches results. This will greatly speed up related calls. The default caching time can be altered by defining `settings.EVEONLINE_OBJ_CACHE_DURATION`, in seconds.
 
 Objects are cached as per the django project configuration. Longer caching timers will reduce API calls to speed up the app, but will consume more memory and not be as up-to-date. Select a caching time accordingly.
 
