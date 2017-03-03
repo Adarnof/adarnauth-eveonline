@@ -60,6 +60,10 @@ class Entity(object):
         self._provider = self._provider or eve_provider_factory()
         return self._provider
 
+    @provider.setter
+    def provider(self, provider):
+        self._provider = provider
+
 
 class Corporation(Entity):
     def __init__(self, obj_id, name, ticker, ceo_id, members, alliance_id, faction_id, provider=None):
@@ -143,7 +147,7 @@ class Alliance(Entity):
         assert corp_id in self.corporation_ids
         if corp_id not in self._corps:
             self._corps[corp_id] = self.provider.get_corporation(corp_id)
-            self._corps[corp_id]._alliance = self
+            self._corps[corp_id].alliance = self
         return self._corps[corp_id]
 
     @property
@@ -223,31 +227,31 @@ class Faction(Entity):
 class EveProvider(object):
     def get_alliance(self, alliance_id):
         """
-        :return: an Alliance object for the given ID
+        :return: :class:`eveonline.providers.Alliance`
         """
         raise NotImplementedError()
 
     def get_corporation(self, corp_id):
         """
-        :return: a Corporation object for the given ID
+        :return: :class:`eveonline.providers.Corporation`
         """
         raise NotImplementedError()
 
     def get_character(self, character_id):
         """
-        :return: a Character object for the given ID
+        :return: :class:`eveonline.providers.Character`
         """
         raise NotImplementedError()
 
     def get_itemtype(self, type_id):
         """
-        :return: an ItemType object for the given ID
+        :return: :class:`eveonline.providers.ItemType`
         """
         raise NotImplementedError()
 
     def get_faction(self, faction_id):
         """
-        :return: a Faction object for the given ID
+        :return: :class:`eveonline.providers.Faction`
         """
         raise NotImplementedError()
 
@@ -384,19 +388,16 @@ class EveXmlProvider(EveProvider):
                 raise ObjectNotFound(obj_id, 'corporation')
             raise e
 
-    def _build_character(self, result):
-        return Character(
-            self.adapter,
-            result['id'],
-            result['name'],
-            result['corp']['id'],
-        )
-
     def get_character(self, obj_id):
         api = evelink.eve.EVE(api=self.api)
         try:
-            charinfo = api.character_info_from_id(obj_id).result
-            return self._build_character(charinfo)
+            result = api.character_info_from_id(obj_id).result
+            return Character(
+                self.adapter,
+                result['id'],
+                result['name'],
+                result['corp']['id'],
+            )
         except evelink.api.APIError as e:
             if int(e.code) == 105:
                 raise ObjectNotFound(obj_id, 'character')

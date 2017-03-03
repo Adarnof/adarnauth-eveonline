@@ -69,4 +69,3 @@ def update_all_alliances():
     provider = eve_provider_factory()
     for obj_id in alliance_ids:
         update_alliance.delay(obj_id, provider=provider)
-

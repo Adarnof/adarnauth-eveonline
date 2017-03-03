@@ -43,153 +43,41 @@ class FactionForm(EveEntityForm):
         model = Faction
 
 
-class ReadOnlyCharacterForm(CharacterForm):
+class ReadOnlyEntityForm(EveEntityForm):
     def __init__(self, *args, **kwargs):
-        super(ReadOnlyCharacterForm, self).__init__(*args, **kwargs)
-        self.fields['name'].widget.attrs['readonly'] = True
-        self.fields['corp_id'].widget.attrs['readonly'] = True
-        self.fields['corp_name'].widget.attrs['readonly'] = True
-        self.fields['alliance_id'].widget.attrs['readonly'] = True
-        self.fields['alliance_name'].widget.attrs['readonly'] = True
-        self.fields['faction_id'].widget.attrs['readonly'] = True
-        self.fields['faction_name'].widget.attrs['readonly'] = True
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            self.fields['id'].widget.attrs['readonly'] = True
+        super(ReadOnlyEntityForm, self).__init__(*args, **kwargs)
+        for field_name in self.fields:
+            self.fields[field_name].widget.attrs['readonly'] = True
+            if not getattr(self, 'instance', None):
+                self.fields['id'].widget.attrs['readonly'] = False
 
-    def clean_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.name
-        else:
-            return None
-
-    def clean_corp_id(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.corp_id
-        else:
-            return None
-
-    def clean_corp_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.corp_name
-        else:
-            return None
-
-    def clean_alliance_id(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.alliance_id
-        else:
-            return None
-
-    def clean_alliance_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.alliance_name
-        else:
-            return None
-
-    def clean_faction_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.faction_name
-        else:
-            return None
-
-    def clean_faction_id(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.faction_id
-        else:
-            return None
+    def __getattr__(self, item):
+        # implement all field cleaning methods in one go
+        # subclasses can implement specific field cleaning which will not call this
+        if str.startswith(item, 'clean_'):
+            attr_name = item[item.index('_'):]
+            instance = getattr(self, 'instance', None)
+            if instance:
+                return getattr(instance, attr_name)
+            else:
+                return None
 
 
-class ReadOnlyCorporationForm(CorporationForm):
-    def __init__(self, *args, **kwargs):
-        super(ReadOnlyCorporationForm, self).__init__(*args, **kwargs)
-        self.fields['name'].widget.attrs['readonly'] = True
-        self.fields['alliance_id'].widget.attrs['readonly'] = True
-        self.fields['alliance_name'].widget.attrs['readonly'] = True
-        self.fields['faction_id'].widget.attrs['readonly'] = True
-        self.fields['faction_name'].widget.attrs['readonly'] = True
-        self.fields['members'].widget.attrs['readonly'] = True
-        self.fields['ticker'].widget.attrs['readonly'] = True
-        instance = getattr(self, 'instance', None)
-        if instance.pk:
-            self.fields['id'].widget.attrs['readonly'] = True
-
-    def clean_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.name
-        else:
-            return None
-
-    def clean_alliance_id(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.alliance_id
-        else:
-            return None
-
-    def clean_alliance_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.alliance_name
-        else:
-            return None
-
-    def clean_faction_id(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.faction_id
-        else:
-            return None
-
-    def clean_faction_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.faction_name
-        else:
-            return None
-
-    def clean_members(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.members
-        else:
-            return 0
-
-    def clean_ticker(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.ticker
-        else:
-            return None
+class ReadOnlyCharacterForm(CharacterForm, ReadOnlyEntityForm):
+    pass
 
 
-class ReadOnlyAllianceForm(AllianceForm):
-    def __init__(self, *args, **kwargs):
-        super(ReadOnlyAllianceForm, self).__init__(*args, **kwargs)
-        self.fields['name'].widget.attrs['readonly'] = True
-        self.fields['ticker'].widget.attrs['readonly'] = True
-        instance = getattr(self, 'instance', None)
-        if instance.pk:
-            self.fields['id'].widget.attrs['readonly'] = True
+class ReadOnlyCorporationForm(CorporationForm, ReadOnlyEntityForm):
+    pass
 
-    def clean_name(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.name
-        else:
-            return None
 
-    def clean_ticker(self):
-        instance = getattr(self, 'instance', None)
-        if instance and instance.pk:
-            return instance.ticker
-        else:
-            return None
+class ReadOnlyAllianceForm(AllianceForm, ReadOnlyEntityForm):
+    pass
+
+
+class ReadOnlyItemTypeForm(ItemTypeForm, ReadOnlyEntityForm):
+    pass
+
+
+class ReadOnlyFactionForm(FactionForm, ReadOnlyEntityForm):
+    pass

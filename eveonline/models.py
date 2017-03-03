@@ -227,7 +227,7 @@ class BaseEntity(models.Model):
     @classmethod
     def map_obj_attributes(cls, obj):
         """
-        Updates model attribute values from provider object
+        Pulls data from a provider object and maps it to model attributes.
         :param obj: :class:`eveonline.providers.Entity`
         :return: Dictionary of attribute_name:value
         """
@@ -260,7 +260,7 @@ class BaseEntity(models.Model):
     @classmethod
     def from_provider_obj(cls, obj):
         """
-        Pulls data from a provider object and maps it to model attributes.
+        Spawns a model instance using attributes from a provider object
         :param obj: :class:`eveonline.providers.Entity` or subclass
         :return: :class:`eveonline.models.BaseEntity` or subclass
         """
@@ -269,7 +269,7 @@ class BaseEntity(models.Model):
 
     def update(self, provider=None, commit=True):
         """
-        Updates the corporation/alliance info from external source
+        Updates model attribute values from provider object
         :param provider: :class:`eveonline.providers.EveProvider`
         :param commit: True to save the model upon updating
         :return: :class:`eveonline.models.BaseEntity` or subclass
@@ -296,14 +296,22 @@ class Corporation(NullAllianceSnapshotMixin, NullFactionSnapshotMixin, BaseEntit
     Model representing a corporation from EVE Online
     """
     members = models.PositiveIntegerField(help_text="Number of member characters")
-    ticker = models.CharField(unique=True, max_length=7)
+    ticker = models.CharField(unique=True, max_length=5)
+
+    @property
+    def formatted_ticker(self):
+        return '[{}]'.format(self.ticker)
 
 
 class Alliance(BaseEntity):
     """
     Model representing an alliance from EVE Online
     """
-    ticker = models.CharField(unique=True, max_length=7)
+    ticker = models.CharField(unique=True, max_length=5)
+
+    @property
+    def formatted_ticker(self):
+        return '<{}>'.format(self.ticker)
 
 
 class ItemType(BaseEntity):
@@ -317,4 +325,4 @@ class Faction(BaseEntity):
     """
     Model representing a faction from EVE Online
     """
-    description = models.CharField()
+    description = models.CharField(blank=True, null=True)
