@@ -1,10 +1,12 @@
 from __future__ import unicode_literals
 from django import forms
 from eveonline.providers import eve_provider_factory, ObjectNotFound
-from eveonline.models import Character, Corporation, Alliance, ItemType, Faction
 
 
 class EveEntityForm(forms.ModelForm):
+    """
+    Provides a clean_id method to check supplied IDs against external API for validation
+    """
     def __init__(self, provider=None, *args, **kwargs):
         super(EveEntityForm, self).__init__(*args, **kwargs)
         self.provider = provider or eve_provider_factory()
@@ -15,69 +17,29 @@ class EveEntityForm(forms.ModelForm):
                 self.cleaned_data['id'])
             return self.cleaned_data['id']
         except (ObjectNotFound, AssertionError):
-            raise forms.ValidationError('Invalid %s ID' % self.Meta.model.__class__.__name__)
+            raise forms.ValidationError('Invalid %s ID' % self.Meta.model.__class__.__name__.lower())
 
 
-class CharacterForm(EveEntityForm):
-    class Meta:
-        model = Character
-
-
-class CorporationForm(EveEntityForm):
-    class Meta:
-        model = Corporation
-
-
-class AllianceForm(EveEntityForm):
-    class Meta:
-        model = Alliance
-
-
-class ItemTypeForm(EveEntityForm):
-    class Meta:
-        model = ItemType
-
-
-class FactionForm(EveEntityForm):
-    class Meta:
-        model = Faction
-
-
-class ReadOnlyEntityForm(EveEntityForm):
+class ReadOnlyEveEntityForm(EveEntityForm):
+    """
+    Treats all fields as read-only if the model is already saved
+    """
     def __init__(self, *args, **kwargs):
-        super(ReadOnlyEntityForm, self).__init__(*args, **kwargs)
-        for field_name in self.fields:
-            self.fields[field_name].widget.attrs['readonly'] = True
+        super(ReadOnlyEveEntityForm, self).__init__(*args, **kwargs)
+        for field_name, field in self.fields.items():
+            field.widget.attrs['readonly'] = True
+            field.widget.attrs['disabled'] = True  # should match FK, M2M and CharField which use <select>
             if not getattr(self, 'instance', None):
                 self.fields['id'].widget.attrs['readonly'] = False
 
-    def __getattr__(self, item):
-        # implement all field cleaning methods in one go
-        # subclasses can implement specific field cleaning which will not call this
-        if str.startswith(item, 'clean_'):
-            attr_name = item[item.index('_'):]
+    def __getattr__(self, name):
+        # provide clean_fieldname methods to prevent changing readonly attributes
+        if str.startswith(name, 'clean_') and name != 'clean_':
+            attr_name = name[name.index('_')+1:]
             instance = getattr(self, 'instance', None)
             if instance:
                 return getattr(instance, attr_name)
             else:
                 return None
-
-
-class ReadOnlyCharacterForm(CharacterForm, ReadOnlyEntityForm):
-    pass
-
-
-class ReadOnlyCorporationForm(CorporationForm, ReadOnlyEntityForm):
-    pass
-
-
-class ReadOnlyAllianceForm(AllianceForm, ReadOnlyEntityForm):
-    pass
-
-
-class ReadOnlyItemTypeForm(ItemTypeForm, ReadOnlyEntityForm):
-    pass
-
-
-class ReadOnlyFactionForm(FactionForm, ReadOnlyEntityForm):
-    pass
+        else:
+            return super(ReadOnlyEveEntityForm, self).__getattr__(name)

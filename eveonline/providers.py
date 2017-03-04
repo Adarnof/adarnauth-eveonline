@@ -1,16 +1,13 @@
 from __future__ import unicode_literals
 from django.utils.encoding import python_2_unicode_compatible
 from esi.clients import esi_client_factory
-from django.conf import settings
+from eveonline.app_settings import OBJ_CACHE_DURATION, DEFAULT_PROVIDER
 from django.core.cache import cache
 from bravado.exception import HTTPNotFound, HTTPUnprocessableEntity
 import evelink
 import logging
 
 logger = logging.getLogger(__name__)
-
-# optional setting to control cached object lifespan
-OBJ_CACHE_DURATION = int(getattr(settings, 'EVEONLINE_OBJ_CACHE_DURATION', 600))
 
 
 @python_2_unicode_compatible
@@ -467,7 +464,7 @@ class CachingProviderWrapper(EveProvider):
 
 
 def eve_provider_factory(api_key=None, token=None, default_provider=None):
-    default_provider = default_provider or getattr(settings, 'EVEONLINE_DEFAULT_PROVIDER', 'esi')
+    default_provider = default_provider or DEFAULT_PROVIDER
 
     if default_provider.lower() == 'xml':
         provider = EveXmlProvider(api_key=api_key)
