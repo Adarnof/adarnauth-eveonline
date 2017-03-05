@@ -32,14 +32,9 @@ class ReadOnlyEveEntityForm(EveEntityForm):
             if not getattr(self, 'instance', None):
                 self.fields['id'].widget.attrs['readonly'] = False
 
-    def __getattr__(self, name):
-        # provide clean_fieldname methods to prevent changing readonly attributes
-        if str.startswith(name, 'clean_') and name != 'clean_':
-            attr_name = name[name.index('_')+1:]
-            instance = getattr(self, 'instance', None)
-            if instance:
-                return getattr(instance, attr_name)
-            else:
-                return None
-        else:
-            return super(ReadOnlyEveEntityForm, self).__getattr__(name)
+    def clean(self):
+        if not getattr(getattr(self, 'instance', None), 'pk', None) and 'id' in self.cleaned_data:
+            # get API data for creation of a new model
+            obj = getattr(self.provider, 'get_%s' % self.Meta.model.__class__.__name__.lower())(self.cleaned_data['id'])
+            self.cleaned_data.update(self.model.map_obj_attributes(obj))
+        return self.cleaned_data
